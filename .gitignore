@@ -1,0 +1,18 @@
+# Sensitive files
+.env
+.env.local
+.env.production
+*.key
+*.pem
+
+# Logs
+logs/
+*.log
+
+# Data
+redis-data/
+grafana-data/
+prometheus-data/
+
+# Node
+node_modules/
