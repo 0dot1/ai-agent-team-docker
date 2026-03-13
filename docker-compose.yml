@@ -1,0 +1,255 @@
+# AI Agent Team - Docker Deployment for Ubuntu 24
+# Save this as docker-compose.yml
+
+version: '3.8'
+
+services:
+  # OpenClaw Gateway
+  openclaw:
+    build:
+      context: ./openclaw
+      dockerfile: Dockerfile
+    container_name: openclaw-gateway
+    restart: unless-stopped
+    ports:
+      - "18789:18789"
+      - "8080:8080"
+    volumes:
+      - ./config:/root/.openclaw
+      - ./agents:/app/agents
+      - ./logs:/app/logs
+    environment:
+      - NODE_ENV=production
+      - OPENCLAW_MODE=docker
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - KIMI_API_KEY=${KIMI_API_KEY}
+    networks:
+      - ai-team-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:18789/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Agent Coordinator
+  coordinator:
+    build:
+      context: ./coordinator
+      dockerfile: Dockerfile
+    container_name: ai-coordinator
+    restart: unless-stopped
+    depends_on:
+      - openclaw
+      - redis
+    volumes:
+      - ./agents:/app/agents
+      - ./shared:/app/shared
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - OPENCLAW_HOST=openclaw
+      - OPENCLAW_PORT=18789
+    networks:
+      - ai-team-network
+
+  # Individual Agent Services
+  agent-pm:
+    build:
+      context: ./agents/pm
+      dockerfile: Dockerfile
+    container_name: agent-pm
+    restart: unless-stopped
+    depends_on:
+      - coordinator
+      - redis
+    environment:
+      - AGENT_ROLE=product_manager
+      - AGENT_MODEL=claude-3-opus-20240229
+      - REDIS_URL=redis://redis:6379
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN_PM}
+    volumes:
+      - ./agents/pm:/app/config
+      - ./shared:/app/shared
+    networks:
+      - ai-team-network
+
+  agent-ui:
+    build:
+      context: ./agents/ui
+      dockerfile: Dockerfile
+    container_name: agent-ui
+    restart: unless-stopped
+    depends_on:
+      - coordinator
+      - redis
+    environment:
+      - AGENT_ROLE=ui_designer
+      - AGENT_MODEL=claude-3-5-sonnet-20241022
+      - REDIS_URL=redis://redis:6379
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN_UI}
+    volumes:
+      - ./agents/ui:/app/config
+      - ./shared:/app/shared
+    networks:
+      - ai-team-network
+
+  agent-frontend:
+    build:
+      context: ./agents/frontend
+      dockerfile: Dockerfile
+    container_name: agent-frontend
+    restart: unless-stopped
+    depends_on:
+      - coordinator
+      - redis
+    environment:
+      - AGENT_ROLE=frontend_dev
+      - AGENT_MODEL=claude-3-5-sonnet-20241022
+      - REDIS_URL=redis://redis:6379
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN_FRONTEND}
+    volumes:
+      - ./agents/frontend:/app/config
+      - ./shared:/app/shared
+    networks:
+      - ai-team-network
+
+  agent-backend:
+    build:
+      context: ./agents/backend
+      dockerfile: Dockerfile
+    container_name: agent-backend
+    restart: unless-stopped
+    depends_on:
+      - coordinator
+      - redis
+    environment:
+      - AGENT_ROLE=backend_dev
+      - AGENT_MODEL=claude-3-5-sonnet-20241022
+      - REDIS_URL=redis://redis:6379
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN_BACKEND}
+    volumes:
+      - ./agents/backend:/app/config
+      - ./shared:/app/shared
+    networks:
+      - ai-team-network
+
+  agent-app:
+    build:
+      context: ./agents/app
+      dockerfile: Dockerfile
+    container_name: agent-app
+    restart: unless-stopped
+    depends_on:
+      - coordinator
+      - redis
+    environment:
+      - AGENT_ROLE=app_dev
+      - AGENT_MODEL=claude-3-5-sonnet-20241022
+      - REDIS_URL=redis://redis:6379
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN_APP}
+    volumes:
+      - ./agents/app:/app/config
+      - ./shared:/app/shared
+    networks:
+      - ai-team-network
+
+  agent-security:
+    build:
+      context: ./agents/security
+      dockerfile: Dockerfile
+    container_name: agent-security
+    restart: unless-stopped
+    depends_on:
+      - coordinator
+      - redis
+    environment:
+      - AGENT_ROLE=security_eng
+      - AGENT_MODEL=gpt-4o
+      - REDIS_URL=redis://redis:6379
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN_SECURITY}
+    volumes:
+      - ./agents/security:/app/config
+      - ./shared:/app/shared
+    networks:
+      - ai-team-network
+
+  agent-ops:
+    build:
+      context: ./agents/ops
+      dockerfile: Dockerfile
+    container_name: agent-ops
+    restart: unless-stopped
+    depends_on:
+      - coordinator
+      - redis
+    environment:
+      - AGENT_ROLE=operations
+      - AGENT_MODEL=gpt-4o
+      - REDIS_URL=redis://redis:6379
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN_OPS}
+    volumes:
+      - ./agents/ops:/app/config
+      - ./shared:/app/shared
+    networks:
+      - ai-team-network
+
+  # Redis for shared memory
+  redis:
+    image: redis:7-alpine
+    container_name: ai-team-redis
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    networks:
+      - ai-team-network
+
+  # Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: ai-team-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+    depends_on:
+      - openclaw
+    networks:
+      - ai-team-network
+
+  # Monitoring (optional)
+  prometheus:
+    image: prom/prometheus
+    container_name: ai-team-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - ai-team-network
+
+  grafana:
+    image: grafana/grafana
+    container_name: ai-team-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - ai-team-network
+
+networks:
+  ai-team-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+  prometheus-data:
+  grafana-data:
