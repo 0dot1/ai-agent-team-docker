@@ -1,0 +1,12 @@
+.env
+.env.local
+.env.production
+*.key
+*.pem
+logs/
+*.log
+redis-data/
+grafana-data/
+prometheus-data/
+node_modules/
+.DS_Store
